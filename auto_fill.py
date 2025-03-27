@@ -1,3 +1,4 @@
+import os
 import unicodedata
 import re
 import time
@@ -76,6 +77,11 @@ def bypass_confirmation(driver):
 def auto_fill_form(txt_path, form_url):
     options = webdriver.ChromeOptions()
     options.add_argument("--start-maximized")
+    user_path = os.path.expanduser("~")  # Lấy đường dẫn thư mục người dùng
+    chrome_profile_path = os.path.join(user_path, "AppData", "Local", "Google", "Chrome", "User Data")
+    print(chrome_profile_path)
+    options.add_argument(f"--user-data-dir={chrome_profile_path}")
+    options.add_argument("--profile-directory=Default")
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     driver.get(form_url)
     time.sleep(3)

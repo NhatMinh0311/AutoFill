@@ -21,7 +21,7 @@ def read_answers(file_path):
         question = None
         for line in file:
             line = line.strip()
-            if line and line[0].isdigit() and "." in line:
+            if line and line[0].isdigit() and ". " in line:
                 question = normalize(line.split(".", 1)[1].strip())
                 answers[question] = []
             elif line.startswith("#") and question:
@@ -35,35 +35,6 @@ def get_question_type(question_element):
         return "Single Choice"
     return "Unknown"
 
-def extract_questions(driver):
-    questions_data = []
-    question_elements = driver.find_elements(By.CSS_SELECTOR, "[data-automation-id='questionItem']")
-    
-    for question_element in question_elements:
-        try:
-            question_text_element = question_element.find_element(By.CSS_SELECTOR, "[data-automation-id='questionTitle'] .text-format-content")
-            question_text = question_text_element.text.strip() if question_text_element else "Không tìm thấy câu hỏi"
-            question_type = get_question_type(question_element)
-
-            choices = []
-            choice_elements = question_element.find_elements(By.CSS_SELECTOR, "[data-automation-id='choiceItem']")
-            for choice_element in choice_elements:
-                try:
-                    choice_text_element = choice_element.find_element(By.CSS_SELECTOR, "[aria-label]")
-                    choice_text = choice_text_element.get_attribute("aria-label").strip() if choice_text_element else "Không tìm thấy đáp án"
-                    choices.append(choice_text)
-                except Exception as e:
-                    print(f"❌ Lỗi khi trích xuất đáp án: {e}")
-
-            questions_data.append({
-                "question": question_text,
-                "type": question_type,
-                "choices": choices
-            })
-        except Exception as e:
-            print(f"❌ Lỗi khi trích xuất câu hỏi: {e}")
-    return questions_data
-
 def bypass_confirmation(driver):
     """Kiểm tra và nhấn nút xác nhận nếu có"""
     try:
@@ -74,6 +45,17 @@ def bypass_confirmation(driver):
     except NoSuchElementException:
         print("➡️ Không cần xác nhận, vào form trực tiếp.")
 
+def find_correct_answers(answers, question_text):
+    for key in answers.keys():
+        if key in question_text:
+            return answers[key]
+    return None
+
+def is_correct_answer(correct_answers, choice_text):
+    for correct_answer in correct_answers:
+        if correct_answer in choice_text:
+            return True
+    return False
 def auto_fill_form(txt_path, form_url):
     options = webdriver.ChromeOptions()
     options.add_argument("--start-maximized")
@@ -89,35 +71,40 @@ def auto_fill_form(txt_path, form_url):
     # ✅ Thêm xử lý trang xác nhận
     bypass_confirmation(driver)
 
-    questions_data = extract_questions(driver)
-    #print(questions_data)
     answers = read_answers(txt_path)
     #print(answers)
-
-    for question_data in questions_data:
-        question_text = question_data["question"]
-        choices = question_data["choices"]
-        found_answer = False
-
-        for key in answers.keys():
-            if key in normalize(question_text):
-                correct_answers = answers[key]
-                question_container = driver.find_element(By.XPATH, f"//span[contains(text(), '{question_text}')]/ancestor::div[@data-automation-id='questionItem']")
-                choice_elements = question_container.find_elements(By.XPATH, ".//input[@type='radio' or @type='checkbox']")      	
-
-                for choice in choice_elements:
-                    label = choice.get_attribute("aria-labelledby")
-                    if label:
-                        choice_label = driver.find_element(By.ID, label).text.strip()
-                        if normalize(choice_label) in correct_answers:
-                            choice.click()
-                            found_answer = True
-                
-                break
-        
-        if not found_answer:
-            print(f"⚠️ Không tìm thấy đáp án phù hợp cho câu: {question_text}")
+    question_elements = driver.find_elements(By.CSS_SELECTOR, "[data-automation-id='questionItem']")
     
+    for question_element in question_elements:
+        try:
+            question_text_element = question_element.find_element(By.CSS_SELECTOR, "[data-automation-id='questionTitle'] .text-format-content")
+            question_text = question_text_element.text.strip() if question_text_element else "Không tìm thấy câu hỏi"
+            question_type = get_question_type(question_element)
+
+            correct_answers = find_correct_answers(answers, normalize(question_text))
+            if not correct_answers:
+                print(f"⚠️ Không tìm thấy câu hỏi trong file đáp án: {question_text}")
+            elif len(correct_answers) == 0:
+                print(f"⚠️ Không tìm thấy đáp án cho câu hỏi: {question_text}")
+            else:
+                choice_elements = question_element.find_elements(By.CSS_SELECTOR, "[data-automation-id='choiceItem']")
+                found_answer = False
+                for choice_element in choice_elements:
+                    try:
+                        choice_text_element = choice_element.find_element(By.CSS_SELECTOR, "[aria-label]")
+                        choice_text = choice_text_element.get_attribute("aria-label").strip() if choice_text_element else "Không tìm thấy đáp án"
+                        if is_correct_answer(correct_answers, normalize(choice_text)):
+                            choice_element.click()
+                            found_answer = True
+                    except Exception as e:
+                        print(f"❌ Lỗi khi trích xuất đáp án: {e}")
+
+                if not found_answer:
+                    print(f"⚠️ Không tìm thấy đáp án phù hợp cho câu: {question_text}")
+                    print(correct_answers)
+        except Exception as e:
+            print(f"❌ Lỗi khi trích xuất câu hỏi: {e}")
+
     messagebox.showinfo("Hoàn thành", "Đã điền đáp án. Hãy kiểm tra lại trước khi nộp bài.")
 
 # Giao diện người dùng
